@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Leave and Cleaner Schedule Calendar (Debug)</title>
+  <style>
+    body { font-family: "Segoe UI",sans-serif; background:#f5f7fa; margin:0; padding:12px; color:#333; display:flex; flex-direction:column; align-items:center;}
+    .month-controls{margin:6px 0;display:flex;align-items:center;gap:12px}
+    button{background:#0078d4;color:#fff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer}
+    .month-title{font-weight:700;color:#0078d4}
+    main{background:#fff;padding:10px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.08);width:100%;max-width:980px}
+    table{width:100%;border-collapse:collapse}
+    th{background:#0078d4;color:#fff;padding:8px;text-align:center}
+    td{border:1px solid #ddd;height:56px;vertical-align:top;padding:4px;font-size:0.85em}
+    .date{font-weight:700;margin-bottom:3px}
+    .today{background:#fff59d;box-shadow:inset 0 0 0 3px #fbc02d}
+    .empty{background:#f9f9f9}
+    .color-square{width:10px;height:10px;display:inline-block;margin-left:5px;border:1px solid #333}
+    .form-container{margin-top:12px;width:100%;max-width:980px;background:#fff;padding:10px;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.06)}
+    input,select{padding:6px;margin:4px;border-radius:4px;border:1px solid #ccc}
+    .data-table{margin-top:12px;width:100%;max-width:980px;background:#fff;padding:8px;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.04)}
+    .data-table th, .data-table td{border:1px solid #ddd;padding:8px;text-align:center}
+    .status{margin-top:10px;font-size:0.9em;color:#555}
+    .error{color:#b00020;font-weight:600}
+    .small{font-size:0.85em;color:#666}
+    .debug-box{margin-top:10px;width:100%;max-width:980px;background:#111;color:#fff;padding:8px;border-radius:6px;font-family:monospace;font-size:12px;white-space:pre-wrap;display:none}
+  </style>
+</head>
+<body>
+  <h2>Leave & Cleaner Schedule Calendar — Debug Mode</h2>
+
+  <div class="month-controls">
+    <button id="prevMonth">&laquo; Prev</button>
+    <div class="month-title"></div>
+    <button id="nextMonth">Next &raquo;</button>
+  </div>
+
+  <main>
+    <table>
+      <thead>
+        <tr><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th><th>Sun</th></tr>
+      </thead>
+      <tbody id="calendar-body"></tbody>
+    </table>
+  </main>
+
+  <div class="form-container">
+    <h3>Add Leave / Status</h3>
+    <select id="category">
+      <option value="Absent" data-color="red">Absent</option>
+      <option value="Emergency Leave" data-color="violet">Emergency Leave</option>
+      <option value="Vacation Leave" data-color="black">Vacation Leave</option>
+      <option value="Sick Leave" data-color="white">Sick Leave</option>
+      <option value="Late" data-color="orange">Late</option>
+      <option value="Halfday/Undertime" data-color="blue">Halfday/Undertime</option>
+      <option value="Change Dayoff" data-color="gray">Change Dayoff</option>
+      <option value="Overtime" data-color="green">Overtime</option>
+    </select>
+    <input type="text" id="name" placeholder="Name" />
+    <input type="date" id="fromDate" />
+    <input type="date" id="toDate" />
+    <button id="addBtn">Add</button>
+    <div class="status" id="status">Status: ready</div>
+  </div>
+
+  <div class="data-table" id="dataTableWrap">
+    <table class="data-table" id="dataTable">
+      <thead>
+        <tr><th>Category</th><th>Name</th><th>From</th><th>To</th><th>Color</th><th>Actions</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="debug-box" id="debugBox"></div>
+
+<script>
+  // ====== CONFIG: put your web app URL here (exact) ========
+  const scriptURL = "https://script.google.com/macros/s/AKfycbxUkGKad720G5iovmA8avZSp9nEqMm84uVcb1sWY80gnlTUi_alSsB9GHXE9_VGkG94Kg/exec"; // <<<<<<<<<< REPLACE this
+  // =======================================================
+
+  const statusEl = document.getElementById('status');
+  const debugBox = document.getElementById('debugBox');
+  const tbody = document.getElementById("calendar-body");
+  const monthTitle = document.querySelector(".month-title");
+  let viewDate = new Date();
+  let leaveData = [];
+
+  function setStatus(msg, isError=false) {
+    statusEl.textContent = "Status: " + msg;
+    statusEl.className = isError ? "status error" : "status";
+    console.log("[STATUS]", msg);
+  }
+
+  function showDebug(text) {
+    debugBox.style.display = "block";
+    debugBox.textContent = text;
+    console.log("[DEBUG]", text);
+  }
+
+  // Load data with error handling and reporting
+  async function loadLeaveData() {
+    if (!scriptURL || scriptURL.includes("YOUR_WEB_APP_URL_HERE")) {
+      setStatus("Missing web app URL (edit scriptURL in the HTML).", true);
+      showDebug("Edit the scriptURL variable in the HTML and paste your deployed Apps Script Web App URL.");
+      leaveData = [];
+      renderCalendar(viewDate.getFullYear(), viewDate.getMonth());
+      renderTable();
+      return;
+    }
+
+    setStatus("Fetching data...");
+    try {
+      const res = await fetch(scriptURL + "?action=get", { method: "GET", cache: "no-cache" });
+      const text = await res.text();
+
+      // Helpful debug info: show raw response if not JSON
+      if (!res.ok) {
+        setStatus("Fetch failed: HTTP " + res.status, true);
+        showDebug("Fetch failed. HTTP status: " + res.status + "\nResponse body:\n" + text);
+        leaveData = [];
+        renderCalendar(viewDate.getFullYear(), viewDate.getMonth());
+        renderTable();
+        return;
+      }
+
+      try {
+        const data = JSON.parse(text);
+        // Basic validation
+        if (!Array.isArray(data)) {
+          setStatus("Invalid data format from Apps Script.", true);
+          showDebug("Expected JSON array but got:\n" + text);
+          leaveData = [];
+        } else {
+          leaveData = data.map(d => ({
+            category: d.category || d.Category || "",
+            name: d.name || d.Name || "",
+            from: d.from || d.From || "",
+            to: d.to || d.To || "",
+            color: d.color || d.Color || "gray"
+          }));
+          setStatus("Data loaded (" + leaveData.length + " rows).");
+          debugBox.style.display = "none";
+        }
+      } catch (parseErr) {
+        setStatus("JSON parse error", true);
+        showDebug("Failed to parse JSON response:\n" + parseErr.message + "\n\nRaw response:\n" + text);
+        leaveData = [];
+      }
+
+    } catch (err) {
+      setStatus("Network or CORS error", true);
+      showDebug("Network error while fetching: " + err.message + "\n\nCheck that the web app URL is correct and deployed, and that access is set to 'Anyone'.");
+      leaveData = [];
+    }
+
+    renderCalendar(viewDate.getFullYear(), viewDate.getMonth());
+    renderTable();
+  }
+
+  // Calendar rendering (inclusive from/to)
+  function renderCalendar(year, month) {
+    tbody.innerHTML = "";
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const startDay = (firstDay.getDay() + 6) % 7; // Monday start
+    const totalDays = lastDay.getDate();
+
+    monthTitle.textContent = `${firstDay.toLocaleString("default", { month: "long" })} ${year}`;
+
+    let html = "<tr>";
+    for (let i = 0; i < startDay; i++) html += "<td class='empty'></td>";
+
+    for (let day = 1; day <= totalDays; day++) {
+      const current = new Date(year, month, day);
+      const isToday = current.toDateString() === new Date().toDateString();
+
+      const matchedLeaves = leaveData.filter(d => {
+        // handle values that may already be Date objects or strings
+        const start = d.from ? new Date(d.from) : null;
+        const end   = d.to   ? new Date(d.to)   : null;
+        if (!start || !end || isNaN(start) || isNaN(end)) return false;
+        start.setHours(0,0,0,0);
+        end.setHours(23,59,59,999);
+        return current >= start && current <= end;
+      });
+
+      html += `<td class="${isToday ? "today" : ""}">
+        <div class="date">${day}</div>
+        ${matchedLeaves.map(l => `<div class="color-square" title="${escapeHtml(l.name)} - ${escapeHtml(l.category)}" style="background:${escapeHtml(l.color)}"></div>`).join("")}
+      </td>`;
+
+      if ((startDay + day) % 7 === 0) html += "</tr><tr>";
+    }
+
+    tbody.innerHTML = html + "</tr>";
+  }
+
+  function renderTable() {
+    const tableBody = document.querySelector("#dataTable tbody");
+    tableBody.innerHTML = "";
+    if (!leaveData.length) {
+      const r = document.createElement("tr");
+      r.innerHTML = `<td colspan="6" class="small">No records found.</td>`;
+      tableBody.appendChild(r);
+      return;
+    }
+    leaveData.forEach((item, index) => {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${escapeHtml(item.category)}</td>
+        <td>${escapeHtml(item.name)}</td>
+        <td>${escapeHtml(item.from)}</td>
+        <td>${escapeHtml(item.to)}</td>
+        <td><div class="color-square" style="background:${escapeHtml(item.color)}"></div></td>
+        <td>
+          <button onclick="editEntry(${index})">Edit</button>
+          <button onclick="deleteEntry(${index})" style="background:#d32f2f;color:#fff">Delete</button>
+        </td>
+      `;
+      tableBody.appendChild(row);
+    });
+  }
+
+  // helpers
+  function escapeHtml(s){ if(s==null) return ""; return String(s).replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c]); }
+
+  // Add
+  document.getElementById("addBtn").addEventListener("click", async () => {
+    const cat = document.getElementById("category");
+    const name = document.getElementById("name").value.trim();
+    const from = document.getElementById("fromDate").value;
+    const to = document.getElementById("toDate").value;
+    if (!name || !from || !to) return alert("Please fill all fields.");
+
+    const color = cat.options[cat.selectedIndex].dataset.color;
+    setStatus("Adding entry...");
+    try {
+      const res = await fetch(scriptURL, {
+        method: "POST",
+        headers: { "Content-Type":"application/json" },
+        body: JSON.stringify({ action:"add", entry:{ category:cat.value, name, from, to, color } })
+      });
+      const txt = await res.text();
+      setStatus("Add response: " + txt);
+    } catch (err) {
+      setStatus("Add failed: " + err.message, true);
+    }
+    await loadLeaveData();
+    document.getElementById("name").value = "";
+    document.getElementById("fromDate").value = "";
+    document.getElementById("toDate").value = "";
+  });
+
+  // Delete
+  async function deleteEntry(idx) {
+    if (!confirm("Delete this entry?")) return;
+    setStatus("Deleting...");
+    try {
+      const res = await fetch(scriptURL, {
+        method: "POST",
+        headers: { "Content-Type":"application/json"},
+        body: JSON.stringify({ action:"delete", index: idx })
+      });
+      const txt = await res.text();
+      setStatus("Delete response: " + txt);
+    } catch (err) {
+      setStatus("Delete failed: " + err.message, true);
+    }
+    await loadLeaveData();
+  }
+
+  // Edit: fill fields and delete original (existing flow)
+  async function editEntry(idx) {
+    const entry = leaveData[idx];
+    document.getElementById("name").value = entry.name;
+    document.getElementById("fromDate").value = entry.from;
+    document.getElementById("toDate").value = entry.to;
+    const catSelect = document.getElementById("category");
+    for (let i=0;i<catSelect.options.length;i++) if (catSelect.options[i].value === entry.category) catSelect.selectedIndex = i;
+    // remove original row so user will "Add" updated version
+    await deleteEntry(idx);
+  }
+
+  // navigation
+  document.getElementById("prevMonth").addEventListener("click", ()=>{ viewDate.setMonth(viewDate.getMonth()-1); renderCalendar(viewDate.getFullYear(), viewDate.getMonth());});
+  document.getElementById("nextMonth").addEventListener("click", ()=>{ viewDate.setMonth(viewDate.getMonth()+1); renderCalendar(viewDate.getFullYear(), viewDate.getMonth());});
+
+  // expose for buttons inside generated HTML
+  window.deleteEntry = deleteEntry;
+  window.editEntry = editEntry;
+
+  // initial load
+  loadLeaveData();
+</script>
+</body>
+</html>
