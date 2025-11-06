@@ -257,10 +257,10 @@
 <div class="sidebar-inner slimscroll">
 <div id="sidebar-menu" class="sidebar-menu">
 <ul>
+
+
 <img src="assets/img/seperator.png" alt="img" style="width: 100%;">
 <br>
-
-
 
 <li class="submenu">
 <a onclick="location.href='leavecalendar.html';"><img src="assets/img/icons/leave.png" alt="img "><span> Leave Calendar</span> <span class="menu-arrow"></span></a>
@@ -285,7 +285,12 @@
 </div>
 
   <div class="page-wrapper">
-    <iframe src="elements/forecasts.html" style="width: 100vw; height: 93vh;" frameborder=0></iframe>
+<h1 class="page-heading">&nbsp;&nbsp;&nbsp;&nbsp;Cleaners Today</h1>
+
+        <iframe 
+          src="elements/cleaners.html" 
+          style="width: 100vw; height: 93vh; border: none;">
+        </iframe>
   </div>
 
 <div id="floating-container"></div>
@@ -311,6 +316,7 @@
 <script src="assets/js/biocalc.js" async></script>
 <script src="assets/js/datetime.js"></script>
 <script src="assets/js/tabopener.js"></script>
+<script src="assets/js/float.js"></script>
 
 <script>
 window['CboxReady'] = function (Cbox) {
